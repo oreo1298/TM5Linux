@@ -16,6 +16,7 @@ makedepends=('git' 'gcc' 'make')
 optdepends=('polkit: run tests with administrator rights from the GUI')
 provides=('tm5linux')
 conflicts=('tm5linux')
+options=('!debug')
 install=tm5linux.install
 source=("git+https://github.com/oreo1298/TM5Linux.git")
 sha256sums=('SKIP')

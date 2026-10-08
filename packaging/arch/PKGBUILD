@@ -17,8 +17,8 @@ license=('MIT')
 depends=('glibc' 'python' 'python-gobject' 'gtk4' 'libcap')
 makedepends=('gcc' 'make')
 optdepends=('polkit: run tests with administrator rights from the GUI')
-provides=('tm5linux')
 conflicts=('tm5linux-git')
+options=('!debug')
 install=tm5linux.install
 source=()
 sha256sums=()
@@ -32,12 +32,12 @@ prepare() {
     root="$(_srcroot)"
     rm -rf "$srcdir/$pkgname"
     mkdir -p "$srcdir/$pkgname"
-    if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
-        # Package exactly what is committed (no stray build files).
+    if [ "$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" = "$root" ]; then
+        # A git checkout: package exactly what is committed (no stray build files).
         git -C "$root" archive --format=tar HEAD | tar -x -C "$srcdir/$pkgname"
     else
-        cp -a "$root/." "$srcdir/$pkgname/"
-        rm -rf "$srcdir/$pkgname/build" "$srcdir/$pkgname/packaging/arch/src" "$srcdir/$pkgname/packaging/arch/pkg"
+        # Downloaded as ZIP/tarball: $srcdir lies inside $root, so copy only what the build needs.
+        cp -a "$root"/{Makefile,LICENSE,README.md,uninstall.sh,engine,gui,configs,data,docs} "$srcdir/$pkgname/"
     fi
 }
 
