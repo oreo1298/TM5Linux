@@ -67,7 +67,7 @@ Then start **TM5 for Linux** from your applications menu, or run `tm5linux`.
 
 ## Install
 
-You need about 2 MB of disk space. Dependencies (installed automatically by `install.sh`):
+You need about 1 MB of disk space. Dependencies (installed automatically by `install.sh`):
 
 | Distribution                          | Packages                                                                      |
 |---------------------------------------|-------------------------------------------------------------------------------|

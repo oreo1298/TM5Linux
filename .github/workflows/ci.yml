@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc make python3 python3-gi gir1.2-gtk-4.0 \
+            libcap2-bin shellcheck desktop-file-utils appstream
+      - name: Build
+        run: make -j"$(nproc)" CFLAGS="-O2 -g -Werror"
+      - name: Self-test and Python syntax check
+        run: make check
+      - name: Short real run
+        run: ./build/tm5linux-cli -m 256M -n 1 -s 5 --no-lock --no-log
+      - name: GUI modules import
+        run: python3 -c "import sys; sys.path.insert(0, 'gui'); import gi; gi.require_version('Gtk', '4.0'); import tm5linux.window"
+      - name: Shell scripts
+        run: shellcheck install.sh update.sh uninstall.sh packaging/deb/build-deb.sh packaging/rpm/build-rpm.sh
+      - name: Desktop file and AppStream metadata
+        run: |
+          desktop-file-validate data/io.github.oreo1298.TM5Linux.desktop
+          appstreamcli validate --no-net data/io.github.oreo1298.TM5Linux.metainfo.xml
+      - name: Install / uninstall round trip
+        run: |
+          ./install.sh --no-deps --yes
+          tm5linux-cli --version
+          getcap /usr/local/bin/tm5linux-cli
+          ./uninstall.sh --yes
+          test ! -e /usr/local/bin/tm5linux-cli
+      - name: Build .deb
+        run: ./packaging/deb/build-deb.sh

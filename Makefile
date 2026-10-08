@@ -20,10 +20,11 @@ DESTDIR   ?=
 
 CC        ?= cc
 CFLAGS    ?= -O2 -g
-CFLAGS    += -std=gnu11 -Wall -Wextra -Wshadow -Wno-unused-parameter -pthread
-CPPFLAGS  += -D_GNU_SOURCE -DTM5L_VERSION=\"$(VERSION)\" -DTM5L_DATADIR=\"$(PKGDATADIR)\"
-LDFLAGS   +=
-LDLIBS    += -pthread -lm
+LDFLAGS   ?=
+# Flags the build needs no matter what CFLAGS/CPPFLAGS/LDLIBS a packager passes in.
+TM5_CFLAGS   := -std=gnu11 -Wall -Wextra -Wshadow -Wno-unused-parameter -pthread
+TM5_CPPFLAGS := -D_GNU_SOURCE -DTM5L_VERSION=\"$(VERSION)\" -DTM5L_DATADIR=\"$(PKGDATADIR)\"
+TM5_LDLIBS   := -pthread -lm
 
 INSTALL   ?= install
 PYTHON    ?= python3
@@ -38,10 +39,10 @@ BIN := build/tm5linux-cli
 all: $(BIN) build/tm5linux
 
 $(BIN): $(OBJ)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(TM5_CFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(TM5_LDLIBS) $(LDLIBS)
 
 build/%.o: engine/%.c | build
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
+	$(CC) $(TM5_CPPFLAGS) $(CPPFLAGS) $(TM5_CFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
 
 build:
 	@mkdir -p build
