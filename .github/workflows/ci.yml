@@ -32,7 +32,7 @@ jobs:
         run: |
           ./install.sh --no-deps --yes
           tm5linux-cli --version
-          getcap /usr/local/bin/tm5linux-cli
+          /usr/sbin/getcap /usr/local/bin/tm5linux-cli
           ./uninstall.sh --yes
           test ! -e /usr/local/bin/tm5linux-cli
       - name: Build .deb
