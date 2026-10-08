@@ -194,6 +194,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         sec = self.section("Cycles")
         self.cycles_spin = Gtk.SpinButton.new_with_range(0, 9999, 1)
+        self.cycles_spin.connect("value-changed", self.on_cycles_changed)
         sec.append(self.cycles_spin)
         sec.append(label("How often the whole test sequence runs. 0 = keep going until you press Stop.",
                          "caption", wrap=True))
@@ -368,8 +369,8 @@ class MainWindow(Gtk.ApplicationWindow):
             note += ("\n" if note else "") + "Note: " + " ".join(cfg["warnings"])
         self.profile_note.set_label(note)
         self.profile_note.set_visible(bool(note))
-        self.cycles_spin.set_value(cfg["cycles"])
         self.sequence.set_sequence(seq, self.tests, cfg["cycles"])
+        self.cycles_spin.set_value(cfg["cycles"])
         self.sequence.title.set_label("Test sequence")
         self.subtitle.set_label(f"{cfg['name']} by {cfg['author']}")
         self.build_guide()
@@ -428,6 +429,10 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def on_mem_mode(self, *_args) -> None:
         self.mem_spin.set_sensitive(self.mem_custom.get_active() and self.state not in ("preparing", "running"))
+
+    def on_cycles_changed(self, *_args) -> None:
+        if self.state not in ("preparing", "running"):
+            self.sequence.set_cycles(int(self.cycles_spin.get_value()))
 
     def on_threads_changed(self, *_args) -> None:
         cpus = int(self.sysinfo.get("cpus", 1))
@@ -797,6 +802,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.log.add("error", f"Test #{ti} found {errs} error{'s' if errs != 1 else ''} (took {took}).")
         elif ev.get("completed", True):
             self.sequence.mark(step, "pass")
+            self.threads.complete()
             self.log.add("ok", f"Test #{ti} passed in {took}.")
         else:
             self.sequence.mark(step, "")

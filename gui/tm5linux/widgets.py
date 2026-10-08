@@ -280,6 +280,10 @@ class ThreadsView(Gtk.Box):
             self.flow.insert(row, -1)
             self.rows.append((bar, errs))
 
+    def complete(self) -> None:
+        for bar, _errs in self.rows:
+            bar.set_fraction(1.0)
+
     def update(self, pcts: list[float], errors: list[int]) -> None:
         for i, (bar, errs) in enumerate(self.rows):
             if i < len(pcts):

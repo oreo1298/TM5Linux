@@ -707,7 +707,7 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
             const uint64_t serr = atomic_load(&R.step_errors);
             for (int i = 0; i < R.nthreads; i++)
                 cum_bytes += atomic_load(&R.w[i].done);
-            if (!atomic_load(&g_stop) || serr) {
+            if (!atomic_load(&g_stop)) {                        /* only complete steps teach us speeds */
                 double r = secs > 0 ? (double)step_total / secs : 0;
                 R.rate[ti] = R.rate[ti] > 0 ? 0.5 * R.rate[ti] + 0.5 * r : r;
                 R.test_bytes_done += (double)step_total;
