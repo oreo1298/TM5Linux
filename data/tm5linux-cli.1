@@ -1,0 +1,85 @@
+.TH TM5LINUX-CLI 1 "October 2026" "TM5 for Linux 1.0.0" "User Commands"
+.SH NAME
+tm5linux-cli \- RAM stability tester that runs TestMem5 (TM5) configs
+.SH SYNOPSIS
+.B tm5linux-cli
+[\fIoptions\fR]
+.SH DESCRIPTION
+.B tm5linux-cli
+tests memory the way TestMem5 does: it reserves almost all free RAM, locks it, splits it between
+all CPU threads and runs the test sequence of a TM5 config (by default Extreme1 by anta777) for a
+number of cycles. Every value written is read back and compared bit for bit; any difference is
+reported as an error.
+.PP
+On a terminal a live dashboard is shown. When the output is redirected, plain timestamped lines are
+printed. The graphical front end is started with \fBtm5linux\fR.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fINAME|FILE\fR
+Preset name (extreme, absolut, universal2, pcbdestroyer) or path to a TM5 .cfg file.
+.TP
+.BR \-m ", " \-\-memory " " \fISIZE\fR
+Amount of memory to test, e.g. \fB12G\fR, \fB8192M\fR or \fB90%\fR of the available memory.
+Default: all available memory minus a safety reserve.
+.TP
+.BR \-t ", " \-\-threads " " \fIN\fR
+Number of worker threads (default: all CPU threads).
+.TP
+.BR \-n ", " \-\-cycles " " \fIN\fR
+Number of cycles (default: from the config; 0 runs until stopped).
+.TP
+.BR \-s ", " \-\-time\-scale " " \fIPCT\fR
+Scale the duration of every test (default 100).
+.TP
+.BR \-e ", " \-\-stop\-on\-error
+Stop at the first error.
+.TP
+.B \-\-no\-lock
+Do not lock the tested memory.
+.TP
+.B \-\-no\-hugepages
+Do not request transparent huge pages.
+.TP
+.B \-\-force
+Allow testing more memory than is currently available.
+.TP
+.BI \-\-seed " N"
+Use a fixed random seed.
+.TP
+.BI \-\-log " FILE"
+Write the log to FILE (default: ~/.local/share/tm5linux/logs/).
+.TP
+.B \-\-no\-log
+Do not write a log file.
+.TP
+.BR \-l ", " \-\-list\-presets
+List available configs.
+.TP
+.BR \-d ", " \-\-describe
+Explain every test of the selected config.
+.TP
+.BR \-i ", " \-\-sysinfo
+Show CPU, memory and memory-locking status.
+.TP
+.B \-\-selftest
+Verify that simulated bit flips are detected.
+.TP
+.B \-\-json
+Machine-readable output, one JSON object per line.
+.TP
+.BR \-q ", " \-\-quiet
+Only print the final result.
+.SH MEMORY LOCKING
+Locking keeps the tested memory in RAM so it cannot be swapped out. It needs root or the
+CAP_IPC_LOCK capability, which the installer grants with
+.B setcap cap_ipc_lock=ep /usr/bin/tm5linux-cli
+.SH EXIT STATUS
+0 passed, 1 memory errors found, 2 stopped, 3 could not run.
+.SH FILES
+.TP
+.I ~/.config/tm5linux/configs/
+Your own TM5 .cfg files.
+.TP
+.I ~/.local/share/tm5linux/logs/
+Test logs.
+

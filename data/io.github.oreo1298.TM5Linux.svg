@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2738"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <linearGradient id="pcb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5aaeff"/>
+      <stop offset="1" stop-color="#2d6bd4"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="url(#bg)" stroke="#2c384b" stroke-width="2"/>
+  <!-- "TM5" label -->
+  <g fill="#e9eef6">
+    <path d="M27 23h20v6h-7v17h-6V29h-7z"/>
+    <path d="M51 23h6l6 10 6-10h6v23h-6V33l-6 9-6-9v13h-6z"/>
+    <path d="M80 23h18v6H86v4h5c5 0 8 3 8 7s-3 7-9 7h-10v-6h10c1.5 0 2-0.5 2-1s-0.5-1-2-1H80z"/>
+  </g>
+  <!-- memory module -->
+  <rect x="16" y="56" width="96" height="38" rx="5" fill="url(#pcb)"/>
+  <g fill="#0b1626" opacity="0.88">
+    <rect x="23" y="62" width="15" height="19" rx="2"/>
+    <rect x="42" y="62" width="15" height="19" rx="2"/>
+    <rect x="71" y="62" width="15" height="19" rx="2"/>
+    <rect x="90" y="62" width="15" height="19" rx="2"/>
+  </g>
+  <g fill="#f5c542">
+    <rect x="21" y="86" width="3" height="8"/>
+    <rect x="27" y="86" width="3" height="8"/>
+    <rect x="33" y="86" width="3" height="8"/>
+    <rect x="39" y="86" width="3" height="8"/>
+    <rect x="45" y="86" width="3" height="8"/>
+    <rect x="51" y="86" width="3" height="8"/>
+    <rect x="57" y="86" width="3" height="8"/>
+    <rect x="68" y="86" width="3" height="8"/>
+    <rect x="74" y="86" width="3" height="8"/>
+    <rect x="80" y="86" width="3" height="8"/>
+    <rect x="86" y="86" width="3" height="8"/>
+    <rect x="92" y="86" width="3" height="8"/>
+    <rect x="98" y="86" width="3" height="8"/>
+    <rect x="104" y="86" width="3" height="8"/>
+  </g>
+  <rect x="62" y="85" width="4" height="9" fill="#0d1117"/>
+  <!-- check badge -->
+  <circle cx="98" cy="100" r="17" fill="#3fcf8e" stroke="#0d1117" stroke-width="4"/>
+  <path d="M90 100.5l5.5 5.5 11-12" fill="none" stroke="#05140c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

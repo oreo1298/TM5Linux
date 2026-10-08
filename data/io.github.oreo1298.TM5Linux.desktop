@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TM5 for Linux
+GenericName=Memory Stability Test
+Comment=Test RAM stability with TestMem5 (TM5) configs like Extreme1 by anta777
+Exec=tm5linux
+Icon=io.github.oreo1298.TM5Linux
+Terminal=false
+Categories=System;Monitor;
+Keywords=RAM;memory;test;tester;stability;overclocking;TM5;TestMem5;anta777;memtest;DDR4;DDR5;
+StartupNotify=true

@@ -1,0 +1,11 @@
+/build/
+__pycache__/
+*.pyc
+/tm5linux_*.deb
+/tm5linux-*.tar.gz
+/packaging/arch/src/
+/packaging/arch/pkg/
+/packaging/arch/*.pkg.tar.*
+/packaging/arch/aur/src/
+/packaging/arch/aur/pkg/
+/packaging/arch/aur/TM5Linux/

@@ -1,0 +1,20 @@
+# Let normal users lock the tested memory in RAM (CAP_IPC_LOCK) without running as root.
+# makepkg cannot store file capabilities in the package, so they are set after installation.
+
+_set_caps() {
+    if setcap cap_ipc_lock=ep /usr/bin/tm5linux-cli 2>/dev/null; then
+        echo "  -> TM5 for Linux may now lock memory (CAP_IPC_LOCK)."
+    else
+        echo "  -> Could not set CAP_IPC_LOCK on /usr/bin/tm5linux-cli."
+        echo "     Tests still run, but memory may be swapped. Run as root or use 'Run with administrator rights'."
+    fi
+}
+
+post_install() {
+    _set_caps
+    echo "  -> Start 'TM5 for Linux' from your app menu, or run 'tm5linux' (GUI) / 'tm5linux-cli' (terminal)."
+}
+
+post_upgrade() {
+    _set_caps
+}

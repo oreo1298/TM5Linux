@@ -1,0 +1,279 @@
+/* TM5 for Linux - dark theme. High-contrast text (WCAG AA or better) on deep blue-grey surfaces. */
+
+@define-color tm_bg       #0d1117;
+@define-color tm_surface  #121821;
+@define-color tm_card     #171e29;
+@define-color tm_card_hi  #1e2633;
+@define-color tm_border   #263042;
+@define-color tm_track    #232c3a;
+@define-color tm_text     #e9eef6;
+@define-color tm_text2    #b0bacb;
+@define-color tm_text3    #8591a6;
+@define-color tm_accent   #4ea1ff;
+@define-color tm_green    #3fcf8e;
+@define-color tm_amber    #f5b942;
+@define-color tm_red      #ff6b6b;
+
+window.tm5,
+window.tm5-dialog {
+    background-color: @tm_bg;
+    color: @tm_text;
+}
+
+window.tm5 headerbar {
+    background-color: @tm_surface;
+    border-bottom: 1px solid @tm_border;
+    box-shadow: none;
+    min-height: 50px;
+}
+
+.app-title    { font-weight: 800; }
+.app-subtitle { color: @tm_text3; font-size: 0.86em; }
+
+/* ---- sidebar ---------------------------------------------------------------------------- */
+
+.sidebar {
+    background-color: @tm_surface;
+    border-right: 1px solid @tm_border;
+}
+
+.section-title {
+    color: @tm_text3;
+    font-size: 0.78em;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.caption { color: @tm_text2; font-size: 0.9em; }
+.dim     { color: @tm_text3; }
+.mono    { font-family: monospace; }
+.strong  { font-weight: 700; }
+
+.good   { color: @tm_green; }
+.bad    { color: @tm_red; }
+.warn   { color: @tm_amber; }
+.accent { color: @tm_accent; }
+
+.note {
+    background-color: alpha(@tm_amber, 0.10);
+    border: 1px solid alpha(@tm_amber, 0.35);
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+
+.pill {
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.82em;
+    font-weight: 700;
+}
+.pill.good { background-color: alpha(@tm_green, 0.15); }
+.pill.bad  { background-color: alpha(@tm_red, 0.15); }
+.pill.warn { background-color: alpha(@tm_amber, 0.15); }
+
+/* ---- cards ------------------------------------------------------------------------------- */
+
+.card {
+    background-color: @tm_card;
+    border: 1px solid @tm_border;
+    border-radius: 14px;
+    padding: 16px;
+}
+
+.card-title { font-weight: 800; font-size: 1.02em; }
+
+/* ---- status banner ----------------------------------------------------------------------- */
+
+.banner {
+    background-color: @tm_card;
+    border: 1px solid @tm_border;
+    border-left: 6px solid @tm_accent;
+    border-radius: 16px;
+    padding: 18px 20px;
+}
+.banner.preparing { border-left-color: @tm_amber; }
+.banner.running   { border-left-color: @tm_accent; }
+.banner.pass      { border-left-color: @tm_green; background-color: mix(@tm_card, @tm_green, 0.07); }
+.banner.fail      { border-left-color: @tm_red;   background-color: mix(@tm_card, @tm_red, 0.09); }
+.banner.stopped   { border-left-color: @tm_text3; }
+.banner.error     { border-left-color: @tm_red; }
+
+.banner-icon  { font-size: 2.3em; font-weight: 800; min-width: 52px; }
+.banner-title  { font-size: 1.6em; font-weight: 800; }
+.banner-detail { font-weight: 700; color: @tm_text; }
+.banner-text  { color: @tm_text2; font-size: 1.02em; }
+
+/* ---- statistics -------------------------------------------------------------------------- */
+
+.stat {
+    background-color: @tm_card;
+    border: 1px solid @tm_border;
+    border-radius: 14px;
+    padding: 12px 14px;
+}
+.stat-label { color: @tm_text3; font-size: 0.74em; font-weight: 800; letter-spacing: 1px; }
+.stat-value { font-size: 1.55em; font-weight: 800; font-feature-settings: "tnum"; }
+.stat-sub   { color: @tm_text2; font-size: 0.84em; }
+
+flowbox.stats > flowboxchild,
+flowbox.chips > flowboxchild,
+flowbox.threads > flowboxchild {
+    padding: 0;
+    background: none;
+}
+
+/* ---- progress bars ----------------------------------------------------------------------- */
+
+progressbar.big > trough {
+    min-height: 12px;
+    border-radius: 6px;
+    background-color: @tm_track;
+    border: none;
+}
+progressbar.big > trough > progress {
+    margin: 0;
+    min-height: 12px;
+    border-radius: 6px;
+    background-color: @tm_accent;
+    border: none;
+}
+progressbar.big.ok > trough > progress   { background-color: @tm_green; }
+progressbar.big.fail > trough > progress { background-color: @tm_red; }
+progressbar.big.prep > trough > progress { background-color: @tm_amber; }
+
+progressbar.thin > trough {
+    min-height: 6px;
+    border-radius: 3px;
+    background-color: @tm_track;
+    border: none;
+}
+progressbar.thin > trough > progress {
+    margin: 0;
+    min-height: 6px;
+    border-radius: 3px;
+    background-color: @tm_accent;
+    border: none;
+}
+progressbar.thin.fail > trough > progress { background-color: @tm_red; }
+
+.pct { font-weight: 800; font-feature-settings: "tnum"; }
+
+/* ---- test sequence chips ----------------------------------------------------------------- */
+
+.chip {
+    min-width: 36px;
+    min-height: 30px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-weight: 800;
+    font-feature-settings: "tnum";
+    background-color: @tm_track;
+    color: @tm_text3;
+    border: 1px solid transparent;
+}
+.chip.running {
+    background-color: @tm_accent;
+    color: #07111f;
+    animation: chip-pulse 1.6s ease-in-out infinite;
+}
+.chip.pass {
+    background-color: alpha(@tm_green, 0.16);
+    border-color: alpha(@tm_green, 0.40);
+    color: @tm_green;
+}
+.chip.fail {
+    background-color: alpha(@tm_red, 0.22);
+    border-color: alpha(@tm_red, 0.60);
+    color: @tm_red;
+}
+
+@keyframes chip-pulse {
+    0%   { box-shadow: 0 0 0 0 alpha(@tm_accent, 0.65); }
+    70%  { box-shadow: 0 0 0 7px alpha(@tm_accent, 0.0); }
+    100% { box-shadow: 0 0 0 0 alpha(@tm_accent, 0.0); }
+}
+
+.legend-swatch {
+    min-width: 12px;
+    min-height: 12px;
+    border-radius: 3px;
+    background-color: @tm_track;
+}
+.legend-swatch.pass    { background-color: @tm_green; }
+.legend-swatch.fail    { background-color: @tm_red; }
+.legend-swatch.running { background-color: @tm_accent; }
+
+.cycle-tag {
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 0.86em;
+    font-weight: 700;
+    background-color: @tm_track;
+    color: @tm_text3;
+}
+.cycle-tag.pass    { background-color: alpha(@tm_green, 0.16); color: @tm_green; }
+.cycle-tag.fail    { background-color: alpha(@tm_red, 0.20); color: @tm_red; }
+.cycle-tag.running { background-color: alpha(@tm_accent, 0.18); color: @tm_accent; }
+
+/* ---- tabs, log, error list ---------------------------------------------------------------- */
+
+stackswitcher > button {
+    padding: 6px 16px;
+    font-weight: 700;
+}
+
+.panel {
+    background-color: @tm_card;
+    border: 1px solid @tm_border;
+    border-radius: 14px;
+}
+
+textview.log,
+textview.log > text {
+    background-color: @tm_card;
+    color: @tm_text;
+    font-family: monospace;
+    font-size: 0.93em;
+}
+
+list.errors,
+list.errors > row {
+    background-color: transparent;
+}
+list.errors > row {
+    border-bottom: 1px solid @tm_border;
+    padding: 10px 14px;
+}
+
+.guide-heading { font-weight: 800; font-size: 1.08em; }
+.test-num      { font-weight: 800; color: @tm_accent; font-feature-settings: "tnum"; }
+
+/* ---- buttons ----------------------------------------------------------------------------- */
+
+button.action {
+    background-image: none;
+    border: none;
+    border-radius: 12px;
+    padding: 10px 22px;
+    font-weight: 800;
+    font-size: 1.05em;
+    box-shadow: none;
+}
+button.action.start            { background-color: @tm_green; color: #05140c; }
+button.action.start:hover      { background-color: shade(@tm_green, 1.1); }
+button.action.stop             { background-color: @tm_red; color: #1b0505; }
+button.action.stop:hover       { background-color: shade(@tm_red, 1.08); }
+button.action:disabled         { background-color: @tm_track; color: @tm_text3; }
+
+button.flat-link { padding: 2px 8px; }
+
+/* ---- dialogs ----------------------------------------------------------------------------- */
+
+.dialog-title { font-size: 1.3em; font-weight: 800; }
+.command {
+    background-color: @tm_bg;
+    border: 1px solid @tm_border;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: monospace;
+}

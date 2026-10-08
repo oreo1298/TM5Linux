@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.oreo1298.TM5Linux</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>TM5 for Linux</name>
+  <summary>Test RAM stability with TestMem5 configs</summary>
+  <developer id="io.github.oreo1298">
+    <name>TM5 for Linux contributors</name>
+  </developer>
+  <description>
+    <p>
+      TM5 for Linux is a memory stability tester modelled on TestMem5 (TM5). It reads TM5 config
+      files directly and comes with the popular Extreme1 profile by anta777, so you can check memory
+      overclocks and new RAM on Linux the same way you would on Windows.
+    </p>
+    <ul>
+      <li>Runs the TM5 test functions (SimpleTest, MirrorMove, MirrorMove128, RefreshStable) on every CPU thread at once</li>
+      <li>Locks the tested memory in RAM and bypasses CPU caches so the DRAM itself is tested</li>
+      <li>Plain-language explanations of every test and every error</li>
+      <li>Live progress, time remaining, speed and a TM5-style test sequence view</li>
+      <li>Also usable from the terminal with tm5linux-cli</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.oreo1298.TM5Linux.desktop</launchable>
+  <url type="homepage">https://github.com/oreo1298/TM5Linux</url>
+  <url type="bugtracker">https://github.com/oreo1298/TM5Linux/issues</url>
+  <provides>
+    <binary>tm5linux</binary>
+    <binary>tm5linux-cli</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>Monitor</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-10-08">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

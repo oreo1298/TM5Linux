@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+# TM5 for Linux - GUI launcher (generated from gui/tm5linux.in by "make").
+import glob
+import os
+import subprocess
+import sys
+
+PKGDATADIR = "@PKGDATADIR@"
+ENGINE = "@BINDIR@/tm5linux-cli"
+
+here = os.path.dirname(os.path.realpath(__file__))
+source_gui = os.path.join(here, "..", "gui")
+if os.path.isfile(os.path.join(source_gui, "tm5linux", "app.py")):
+    sys.path.insert(0, os.path.realpath(source_gui))          # running from the source tree (build/)
+else:
+    sys.path.insert(0, os.path.join(PKGDATADIR, "gui"))
+
+if "--version" in sys.argv[1:]:
+    print("tm5linux @VERSION@")
+    sys.exit(0)
+if any(a in ("-h", "--help") for a in sys.argv[1:]):
+    print("Usage: tm5linux\n\nStarts the TM5 for Linux window. For the terminal version see: tm5linux-cli --help")
+    sys.exit(0)
+
+GI_CHECK = "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk"
+
+
+def have_gtk() -> bool:
+    try:
+        exec(GI_CHECK, {})
+        return True
+    except (ImportError, ValueError):
+        return False
+
+
+# "python3" may be a pyenv/conda/alternative interpreter without the distribution's PyGObject.
+# In that case retry with the system interpreter(s) that do have it.
+if not have_gtk() and not os.environ.get("TM5LINUX_REEXEC"):
+    me = os.path.realpath(sys.executable)
+    for cand in ["/usr/bin/python3"] + sorted(glob.glob("/usr/bin/python3.[0-9]*"), reverse=True):
+        if cand.endswith("-config") or not os.access(cand, os.X_OK) or os.path.realpath(cand) == me:
+            continue
+        if subprocess.call([cand, "-c", GI_CHECK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            os.environ["TM5LINUX_REEXEC"] = "1"
+            os.execv(cand, [cand, os.path.realpath(__file__), *sys.argv[1:]])
+
+from tm5linux.app import main  # noqa: E402
+
+sys.exit(main(engine_hint=ENGINE))

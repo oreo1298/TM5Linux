@@ -1,0 +1,59 @@
+# Builds a pacman package from this checkout of TM5 for Linux.
+#
+#   cd packaging/arch && makepkg -si        install / update
+#   sudo pacman -Rns tm5linux               uninstall
+#
+# The version is kept fixed on purpose: makepkg would otherwise rewrite this file, which makes
+# "git pull" complain later. For an AUR-style package that downloads the sources itself, see
+# packaging/arch/aur/PKGBUILD.
+
+pkgname=tm5linux
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="RAM stability tester that runs TestMem5 (TM5) configs like Extreme1 by anta777 - GTK4 GUI and CLI"
+arch=('x86_64' 'aarch64' 'i686' 'armv7h' 'riscv64')
+url="https://github.com/oreo1298/TM5Linux"
+license=('MIT')
+depends=('glibc' 'python' 'python-gobject' 'gtk4' 'libcap')
+makedepends=('gcc' 'make')
+optdepends=('polkit: run tests with administrator rights from the GUI')
+provides=('tm5linux')
+conflicts=('tm5linux-git')
+install=tm5linux.install
+source=()
+sha256sums=()
+
+_srcroot() {
+    realpath "$startdir/../.."
+}
+
+prepare() {
+    local root
+    root="$(_srcroot)"
+    rm -rf "$srcdir/$pkgname"
+    mkdir -p "$srcdir/$pkgname"
+    if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+        # Package exactly what is committed (no stray build files).
+        git -C "$root" archive --format=tar HEAD | tar -x -C "$srcdir/$pkgname"
+    else
+        cp -a "$root/." "$srcdir/$pkgname/"
+        rm -rf "$srcdir/$pkgname/build" "$srcdir/$pkgname/packaging/arch/src" "$srcdir/$pkgname/packaging/arch/pkg"
+    fi
+}
+
+build() {
+    cd "$srcdir/$pkgname"
+    make PREFIX=/usr
+}
+
+check() {
+    cd "$srcdir/$pkgname"
+    ./build/tm5linux-cli --selftest
+}
+
+package() {
+    cd "$srcdir/$pkgname"
+    make PREFIX=/usr DESTDIR="$pkgdir" install
+    rm -f "$pkgdir/usr/share/tm5linux/uninstall.sh"     # pacman takes care of removal
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
