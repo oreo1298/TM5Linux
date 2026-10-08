@@ -56,6 +56,8 @@ if [[ $EUID -ne 0 ]]; then
     fi
 fi
 root_quiet() { if [[ ${#SUDO[@]} -gt 0 ]]; then "${SUDO[@]}" "$@"; else "$@"; fi; }
+AS_USER=0
+inst() { if [[ $AS_USER -eq 1 ]]; then "$@"; else root_quiet "$@"; fi; }
 
 confirm() {
     [[ $ASSUME_YES -eq 1 || ! -t 0 ]] && return 0
@@ -102,7 +104,10 @@ mapfile -t FILES < <(grep -v '^#' "$MANIFEST" | grep -v '^$')
 info "Found TM5 for Linux in ${B}$PREFIX${R} (${#FILES[@]} files)."
 info "${D}${header#\# }${R}"
 
-if [[ $EUID -ne 0 && ${#SUDO[@]} -eq 0 && ! -w "$PREFIX/bin" ]]; then
+if [[ $EUID -ne 0 && -w "$(dirname "$MANIFEST")" && -w "$PREFIX/bin" ]]; then
+    AS_USER=1                       # e.g. installed with --prefix ~/.local
+fi
+if [[ $EUID -ne 0 && ${#SUDO[@]} -eq 0 && $AS_USER -eq 0 ]]; then
     fail "Root rights are needed. Run:  su -c '$0 --prefix $PREFIX'"
 fi
 
@@ -120,20 +125,21 @@ for f in "${FILES[@]}"; do
         *) warn "Skipping $f (outside $PREFIX)"; continue ;;
     esac
     if [[ -f "$f" || -L "$f" ]]; then
-        root_quiet rm -f -- "$f"
+        inst rm -f -- "$f"
         removed=$((removed + 1))
     fi
 done
+# Only empty folders are removed: with --prefix ~/.local the data folder also holds your logs.
 for d in "$PREFIX/share/tm5linux" "$PREFIX/share/doc/tm5linux"; do
-    [[ -d "$d" ]] && root_quiet rm -rf -- "$d"
+    [[ -d "$d" ]] && inst find "$d" -depth -type d -empty -delete
 done
 ok "Removed $removed files."
 
 if command -v gtk-update-icon-cache >/dev/null 2>&1 && [[ -f "$PREFIX/share/icons/hicolor/index.theme" ]]; then
-    root_quiet gtk-update-icon-cache -q -t -f "$PREFIX/share/icons/hicolor" >/dev/null 2>&1 || true
+    inst gtk-update-icon-cache -q -t -f "$PREFIX/share/icons/hicolor" >/dev/null 2>&1 || true
 fi
 if command -v update-desktop-database >/dev/null 2>&1 && [[ -d "$PREFIX/share/applications" ]]; then
-    root_quiet update-desktop-database -q "$PREFIX/share/applications" >/dev/null 2>&1 || true
+    inst update-desktop-database -q "$PREFIX/share/applications" >/dev/null 2>&1 || true
 fi
 
 # ---- personal data ----------------------------------------------------------------------------------------

@@ -90,6 +90,13 @@ fi
 as_root() { if [[ ${#SUDO[@]} -gt 0 ]]; then run "${SUDO[@]}" "$@"; else run "$@"; fi; }
 root_quiet() { if [[ ${#SUDO[@]} -gt 0 ]]; then "${SUDO[@]}" "$@"; else "$@"; fi; }
 
+# A prefix inside your home (e.g. ~/.local) is installed without root rights.
+INSTALL_AS_USER=0
+if [[ $EUID -ne 0 ]] && { [[ "$PREFIX" == "$HOME"/* ]] || [[ -d "$PREFIX" && -w "$PREFIX" ]]; }; then
+    INSTALL_AS_USER=1
+fi
+inst() { if [[ $INSTALL_AS_USER -eq 1 ]]; then "$@"; else root_quiet "$@"; fi; }
+
 # Build as the normal user even if the script was started with sudo, so the source tree does not end
 # up owned by root.
 BUILD_USER=""
@@ -326,14 +333,16 @@ if [[ -f "$MANIFEST" ]]; then
         [[ -z "$old" || "$old" == \#* ]] && continue
         [[ -e "$STAGE$old" ]] && continue
         [[ "$old" == "$PREFIX"/* ]] || continue
-        if [[ -e "$old" || -L "$old" ]]; then root_quiet rm -f -- "$old"; fi
+        if [[ -e "$old" || -L "$old" ]]; then inst rm -f -- "$old"; fi
     done < "$MANIFEST"
 fi
 
 MANIFEST_TMP="$STAGE.manifest"
 {
     echo "# TM5 for Linux install manifest - used by uninstall.sh"
-    echo "# version: $(git_version || true) installed: $(date '+%Y-%m-%d %H:%M:%S') prefix: $PREFIX"
+    ver="$(sed -n 's/^VERSION *:= *//p' "$SRC_DIR/Makefile")"
+    gv="$(git_version || true)"
+    echo "# version: ${ver}${gv:+ (git $gv)} installed: $(date '+%Y-%m-%d %H:%M:%S') prefix: $PREFIX"
     (cd "$STAGE" && find . -type f | sed 's|^\.||' | sort)
     echo "$MANIFEST"
 } > "$MANIFEST_TMP"
@@ -341,19 +350,19 @@ MANIFEST_TMP="$STAGE.manifest"
 count=0
 while IFS= read -r rel; do
     mode="$(stat -c '%a' "$STAGE$rel")"
-    root_quiet install -D -m "$mode" "$STAGE$rel" "$rel"
+    inst install -D -m "$mode" "$STAGE$rel" "$rel"
     count=$((count + 1))
 done < <(cd "$STAGE" && find . -type f | sed 's|^\.||' | sort)
-root_quiet install -D -m 644 "$MANIFEST_TMP" "$MANIFEST"
+inst install -D -m 644 "$MANIFEST_TMP" "$MANIFEST"
 rm -f "$MANIFEST_TMP"
 ok "Installed $count files."
 
 # Refresh menus and icons (not every desktop needs this, so failures are fine).
 if command -v gtk-update-icon-cache >/dev/null 2>&1 && [[ -f "$PREFIX/share/icons/hicolor/index.theme" ]]; then
-    root_quiet gtk-update-icon-cache -q -t -f "$PREFIX/share/icons/hicolor" >/dev/null 2>&1 || true
+    inst gtk-update-icon-cache -q -t -f "$PREFIX/share/icons/hicolor" >/dev/null 2>&1 || true
 fi
 if command -v update-desktop-database >/dev/null 2>&1; then
-    root_quiet update-desktop-database -q "$PREFIX/share/applications" >/dev/null 2>&1 || true
+    inst update-desktop-database -q "$PREFIX/share/applications" >/dev/null 2>&1 || true
 fi
 
 # ---- 6. memory locking -------------------------------------------------------------------------------------
