@@ -601,7 +601,7 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
         jo_end(stdout);
         pthread_mutex_unlock(&R.out);
     }
-    if (R.want_lock && !all_locked)
+    if (R.want_lock && !all_locked && !atomic_load(&g_stop))
         say(LV_WARN, "Locking memory failed (%s) - testing continues, but some memory may be swapped out.",
             strerror(lock_err ? lock_err : ENOMEM));
     human(all_locked ? LV_OK : LV_WARN, "Memory ready in %.1f s: %s %s, %.0f %% in huge pages.", prep_secs, memtxt,
