@@ -32,6 +32,10 @@ typedef struct {
     double      speed;          /* bytes per second */
     double      run_pct, test_pct;
     uint64_t    errors;
+    double      cpu_temp, cpu_max;      /* NAN = no sensor */
+    int         ndimm;
+    double      dimm_temp[8];
+    double      dimm_max;
 } ui_state_t;
 
 void ui_init(bool tty, bool color);
@@ -41,5 +45,6 @@ void ui_end(void);
 void ui_restore_terminal_async(void);
 bool ui_color(void);
 bool ui_utf8(void);
+const char *ui_deg(void);               /* " °C", or " C" without UTF-8 */
 
 #endif

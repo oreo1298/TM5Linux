@@ -13,6 +13,7 @@ finish, and get a clear **PASSED** or **FAILED** - with every error explained in
 - Implements the TM5 test functions **SimpleTest, MirrorMove, MirrorMove128 and RefreshStable** on every CPU thread at once
 - Locks the tested memory in RAM and **bypasses the CPU caches**, so the DRAM itself is tested
 - Live **progress, time remaining, speed, errors** and a TM5-style test-sequence view
+- **CPU temperature** and, when your modules have sensors, **RAM temperature** - live, with the maximum of the run, and recorded with every error
 - Explains **what every test does** and **what every error means** (read error vs. wrong value stored in RAM, which bits flipped, physical address when run as root)
 - Keeps the computer awake during a test, notifies you when it is done, saves a log of every run
 - Has a full **terminal version** (`tm5linux-cli`) with a live dashboard, for servers or SSH
@@ -218,7 +219,7 @@ in `~/.config/tm5linux` and `~/.local/share/tm5linux` are kept; add `--purge` to
 4. Press **Start test**. The memory is prepared first (this can take up to a minute), then the
    tests run:
    - the **status banner** tells you in plain words what is happening right now,
-   - the cards show elapsed and remaining time, cycle, errors, memory, speed and the current test,
+   - the cards show elapsed and remaining time, cycle, errors, memory, speed, and the CPU and RAM temperature,
    - the **test sequence** turns each test green when it passes and red when it finds errors,
    - **Activity** is a running log, **Errors** lists every error in detail, **Threads** shows each CPU thread.
 5. Wait for all cycles to finish. You get a notification with the result, and a log is saved in
@@ -235,6 +236,8 @@ You can stop at any time - but a stopped run is not proof of stability.
 
 ![A failed run with the error list (bit flips simulated with --inject-faults)](docs/screenshots/failed.png)
 
+<sub>Screenshots were taken in a virtual machine: the errors are simulated and the temperatures come from a test sensor tree.</sub>
+
 | Result      | Meaning                                                                                  |
 |-------------|------------------------------------------------------------------------------------------|
 | **PASSED**  | Not a single bit was wrong during the whole run. For overclocked memory, let all cycles finish before trusting the settings. |
@@ -244,6 +247,7 @@ You can stop at any time - but a stopped run is not proof of stability.
 Each error tells you:
 
 - **which test** found it (the TM5 test number - useful when comparing with TM5 results from other people),
+- the **CPU and RAM temperature** at that moment (errors that only appear once the RAM is warm point to heat),
 - **expected vs. read value** and **which bits** were wrong,
 - whether it was a **read error** (re-reading gave the right value → usually timings, voltage or frequency) or a **wrong value stored in RAM** (the bits really flipped → often refresh timings, heat, a weak or faulty module),
 - the address (and the physical address when running as root).
@@ -266,6 +270,7 @@ tm5linux-cli -n 0                         # run until Ctrl+C
 tm5linux-cli --describe                   # explain every test of the profile
 tm5linux-cli --list-presets               # show available profiles
 tm5linux-cli --sysinfo                    # CPU, memory and memory-lock status
+tm5linux-cli --sensors                    # CPU and RAM temperatures and which sensors are used
 tm5linux-cli --selftest                   # prove that bit flips are detected
 ```
 
@@ -299,6 +304,16 @@ a first check, but run the full profile before trusting an overclock.
 
 **Laptop / desktop went to sleep** - the app blocks suspend while testing; if your desktop ignores
 that, disable automatic suspend for the duration of the test.
+
+**CPU temperature says "no sensor found"** - the kernel's temperature driver is not loaded. Run
+`sudo modprobe k10temp` (AMD) or `sudo modprobe coretemp` (Intel), then restart the app.
+`tm5linux-cli --sensors` shows what was found.
+
+**No RAM temperature** - the card only appears when the memory modules have a temperature sensor
+that Linux can read. Most DDR5 modules have one; it is read by the `spd5118` driver on Linux 6.11
+or newer (`sudo modprobe spd5118` if it is not loaded automatically). Many DDR4 modules have no
+sensor; those that do use the `jc42` driver. Overclocked memory often becomes unstable when it gets
+warm - many people aim to keep it below about 50 °C.
 
 **Where are the logs?** - `~/.local/share/tm5linux/logs/`, one file per run.
 

@@ -125,6 +125,8 @@ void sysinfo_read(sysinfo_t *si)
         fclose(f);
     }
 
+    sensors_init(&si->sensors);
+
     struct rlimit rl;
     si->memlock_limit = 0;
     if (getrlimit(RLIMIT_MEMLOCK, &rl) == 0)

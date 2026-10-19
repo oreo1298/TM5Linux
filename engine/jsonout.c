@@ -158,7 +158,31 @@ void jo_sysinfo(FILE *f, const sysinfo_t *si, const tm5_config_t *cfg)
     jo_str(f, "lock_reason", si->lock_reason);
     jo_u64(f, "reserve", sysinfo_reserve(si, cfg ? cfg->reserved_mb : 128));
     jo_u64(f, "default_bytes", sysinfo_default_bytes(si, cfg ? cfg->reserved_mb : 128));
+    double dimms[MAX_DIMM_SENSORS];
+    int nd = sensors_dimms(&si->sensors, dimms, MAX_DIMM_SENSORS);
+    jo_temps(f, &si->sensors, sensors_cpu(&si->sensors), dimms, nd);
     jo_end(f);
+}
+
+/* ,"cpu_temp":61.2,"cpu_sensor":"k10temp Tctl","dimm_temps":[45.0,46.5],"dimm_sensor":"spd5118" */
+void jo_temps(FILE *f, const sensors_t *s, double cpu, const double *dimms, int ndimm)
+{
+    if (isnan(cpu))
+        jo_null(f, "cpu_temp");
+    else
+        jo_dbl(f, "cpu_temp", cpu);
+    jo_str(f, "cpu_sensor", s->cpu_name);
+    fputs(",\"dimm_temps\":[", f);
+    for (int i = 0; i < ndimm; i++) {
+        if (i)
+            fputc(',', f);
+        if (isnan(dimms[i]))
+            fputs("null", f);
+        else
+            fprintf(f, "%.1f", dimms[i]);
+    }
+    fputc(']', f);
+    jo_str(f, "dimm_sensor", s->dimm_driver);
 }
 
 void jo_presets(FILE *f, const preset_t *p, int n)

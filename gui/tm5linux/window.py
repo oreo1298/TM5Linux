@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
 import time
 
 from gi.repository import Gio, GLib, Gtk
 
 from . import APP_NAME, VERSION
 from .engine import EngineRun, find_engine, first, query
-from .util import Settings, fmt_bytes, fmt_duration, fmt_eta, fmt_speed, logs_dir, user_configs_dir
+from .util import (Settings, fmt_bytes, fmt_duration, fmt_eta, fmt_speed, fmt_temp, logs_dir, temp_tone, temps_text,
+                   user_configs_dir)
 from .widgets import (Banner, ErrorList, LabeledBar, LogView, SequenceView, StatCard, ThreadsView, hbox, label,
                       set_tone, vbox)
 
@@ -21,6 +23,14 @@ PROFILE_NOTES = {
     "universal2": "LMHz's quicker, broad profile. Handy for checking changes between longer runs.",
     "pcbdestroyer": "32 cycles of heavy copy tests by Mechan0. Very long - for final stability checks.",
 }
+
+CPU_TEMP_TIP = ("CPU temperature ({sensor}). Memory tests mostly wait on the RAM, so the CPU usually stays well "
+                "below its limit. Yellow from 85 °C, red from 95 °C.")
+CPU_NO_SENSOR_TIP = ("No CPU temperature sensor was found. Loading the driver usually fixes this: "
+                     "'sudo modprobe k10temp' (AMD) or 'sudo modprobe coretemp' (Intel).")
+RAM_TEMP_TIP = ("Temperature of your memory modules ({sensor}); the hottest one is shown.\n{modules}\n\nMemory errors "
+                "get more likely as modules heat up - for overclocked RAM many people aim to stay below about 50 °C. "
+                "Yellow from 50 °C, red from 60 °C.")
 
 DURATIONS = [(25, "Quick - 25 %"), (50, "Short - 50 %"), (100, "Normal - 100 % (as the profile says)"),
              (200, "Long - 200 %"), (400, "Very long - 400 %")]
@@ -90,6 +100,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.lock_warned = False
         self.tick_source = 0
         self._loading = False
+        self.temp_cpu: float | None = None
+        self.temp_dimms: list = []
+        self._temp_poll_busy = False
         self.reset_run_state()
         self.build_ui()
         self.setup_actions()
@@ -251,11 +264,17 @@ class MainWindow(Gtk.ApplicationWindow):
                                   "Any error means the memory returned wrong data: the settings are not stable.")
         self.st_memory = StatCard("Memory", "–", "")
         self.st_speed = StatCard("Speed", "–", "memory throughput")
-        self.st_test = StatCard("Current test", "–", "")
+        self.st_cpu_temp = StatCard("CPU temp", "–", "reading sensors…")
+        self.st_ram_temp = StatCard("RAM temp", "–", "")
         self.st_threads = StatCard("Threads", "–", "")
+        # The last card shows the RAM temperature when the modules have sensors, else the thread count.
+        self.slot_ram = Gtk.Stack()
+        self.slot_ram.add_named(self.st_threads, "threads")
+        self.slot_ram.add_named(self.st_ram_temp, "ram")
+        self.slot_ram.set_visible_child_name("threads")
         stats = Gtk.Grid(column_homogeneous=True, row_spacing=12, column_spacing=12)
         cards = (self.st_elapsed, self.st_remaining, self.st_cycle, self.st_errors, self.st_memory,
-                 self.st_speed, self.st_test, self.st_threads)
+                 self.st_speed, self.st_cpu_temp, self.slot_ram)
         for i, card in enumerate(cards):
             stats.attach(card, i % 4, i // 4, 1, 1)
         main.append(stats)
@@ -317,6 +336,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sysinfo = first(query(self.engine, "--sysinfo"), "sysinfo") or {}
         self.reload_presets(select=self.settings["preset"])
         self.fill_system_info()
+        self.apply_temps(self.sysinfo)
+        if self.sysinfo.get("cpu_temp") is not None or self.sysinfo.get("dimm_temps"):
+            GLib.timeout_add_seconds(3, self.poll_temps)
         self.apply_settings()
         self.set_idle()
         self.log.add("info", f"{APP_NAME} {VERSION} ready. Test engine: {self.engine}")
@@ -501,7 +523,8 @@ class MainWindow(Gtk.ApplicationWindow):
         heading("Tips")
         para("•  Close other programs first and do not use the computer heavily while testing.")
         para("•  Errors that only show up after a long time are often caused by heat - make sure your memory "
-             "has some airflow.")
+             "has some airflow. The CPU temperature is always shown; the RAM temperature appears when your "
+             "modules have a sensor (most DDR5 modules do, on Linux 6.11 or newer).")
         para("•  At stock settings (XMP/EXPO off), errors can mean a faulty module: test the modules one at a "
              "time.")
         para("•  The computer is kept awake while a test runs.")
@@ -525,6 +548,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stderr_tail: list[str] = []
         self.log_path: str | None = None
         self.errors_by_test: dict[int, int] = {}
+        self.run_threads = 0
+        self.run_cpu_max: float | None = None
+        self.run_dimm_max: float | None = None
 
     def set_controls_sensitive(self, on: bool) -> None:
         for w in self.controls:
@@ -663,6 +689,7 @@ class MainWindow(Gtk.ApplicationWindow):
         f.write(f"CPU    : {si.get('cpu')} ({si.get('cpus')} threads)\n")
         f.write(f"Memory : {fmt_bytes(si.get('mem_total', 0))} total, {fmt_bytes(si.get('mem_available', 0))} free\n")
         f.write(f"Kernel : {si.get('kernel')} {si.get('arch')}\n")
+        f.write(f"Temps  : {temps_text(self.temp_cpu, self.dimm_hottest()) or 'no temperature sensors found'}\n")
         f.write(f"Options: {' '.join(self.build_args())}\n\n")
         self.log.file = f
 
@@ -676,6 +703,70 @@ class MainWindow(Gtk.ApplicationWindow):
             f.close()
         except OSError:
             pass
+
+    # ------------------------------------------------------------------------------------------
+    # temperatures
+    # ------------------------------------------------------------------------------------------
+
+    def poll_temps(self) -> bool:
+        """While no test runs, read the sensors every few seconds (during a test the engine reports them)."""
+        if self.state in ("preparing", "running") or self._temp_poll_busy:
+            return True
+        self._temp_poll_busy = True
+
+        def work() -> None:
+            ev = first(query(self.engine, "--sensors", timeout=5), "temps")
+            GLib.idle_add(self._temps_polled, ev)
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def _temps_polled(self, ev: dict | None) -> bool:
+        self._temp_poll_busy = False
+        if ev and self.state not in ("preparing", "running"):
+            self.apply_temps(ev)
+        return False
+
+    def apply_temps(self, ev: dict) -> None:
+        cpu = ev.get("cpu_temp")
+        dimms = list(ev.get("dimm_temps") or [])
+        self.temp_cpu, self.temp_dimms = cpu, dimms
+        if ev.get("cpu_temp_max") is not None:
+            self.run_cpu_max = ev["cpu_temp_max"]
+        if ev.get("dimm_temp_max") is not None:
+            self.run_dimm_max = ev["dimm_temp_max"]
+        running = self.state in ("preparing", "running")
+
+        def maxline(m: float | None, fallback: str) -> str:
+            if m is None:
+                return fallback
+            return f"max {fmt_temp(m)}" + ("" if running else " during the test")
+
+        if cpu is None:
+            self.st_cpu_temp.set("–", "no sensor found", None)
+            self.st_cpu_temp.set_tooltip_text(CPU_NO_SENSOR_TIP)
+        else:
+            self.st_cpu_temp.set(fmt_temp(cpu), maxline(self.run_cpu_max, ev.get("cpu_sensor") or ""),
+                                 temp_tone(cpu, 85, 95))
+            self.st_cpu_temp.set_tooltip_text(CPU_TEMP_TIP.format(sensor=ev.get("cpu_sensor") or "unknown sensor"))
+
+        if dimms:
+            self.slot_ram.set_visible_child_name("ram")
+            known = [d for d in dimms if d is not None]
+            hottest = max(known) if known else None
+            per = " · ".join("–" if d is None else f"{d:.0f}" for d in dimms) + " °C"
+            self.st_ram_temp.set(fmt_temp(hottest),
+                                 maxline(self.run_dimm_max, per if len(dimms) > 1 else "1 module"),
+                                 temp_tone(hottest, 50, 60))
+            modules = "\n".join(f"Module {i + 1}: {fmt_temp(d)}" for i, d in enumerate(dimms))
+            self.st_ram_temp.set_tooltip_text(RAM_TEMP_TIP.format(sensor=ev.get("dimm_sensor") or "?",
+                                                                  modules=modules))
+        else:
+            self.slot_ram.set_visible_child_name("threads")
+
+    def dimm_hottest(self) -> float | None:
+        known = [d for d in self.temp_dimms if d is not None]
+        return max(known) if known else None
 
     # ------------------------------------------------------------------------------------------
     # engine events
@@ -692,7 +783,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.log.add("warn", line)
         return False
 
+    def ev_temps(self, ev: dict) -> None:
+        self.apply_temps(ev)
+
     def ev_sysinfo(self, ev: dict) -> None:
+        self.apply_temps(ev)
         if ev.get("root"):
             self.log.add("info", "The test engine is running with administrator rights.")
 
@@ -708,7 +803,8 @@ class MainWindow(Gtk.ApplicationWindow):
     def ev_alloc_start(self, ev: dict) -> None:
         self.mem_bytes = int(ev["bytes"])
         threads = int(ev["threads"])
-        self.st_memory.set(fmt_bytes(self.mem_bytes), "preparing…")
+        self.run_threads = threads
+        self.st_memory.set(fmt_bytes(self.mem_bytes), f"{threads} threads · preparing…")
         self.st_threads.set(str(threads), f"{fmt_bytes(ev['per_thread'])} each")
         self.threads.setup(threads, fmt_bytes(ev["per_thread"]))
         self.banner.set_text(f"Reserving {fmt_bytes(self.mem_bytes)} of RAM and locking it so it cannot be swapped "
@@ -722,12 +818,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def ev_alloc_done(self, ev: dict) -> None:
         self.locked = bool(ev.get("locked"))
         huge = float(ev.get("huge_pct") or 0)
-        self.st_memory.set(fmt_bytes(self.mem_bytes), "locked in RAM ✔" if self.locked else "not locked ▲",
-                           None)
+        self.st_memory.set(fmt_bytes(self.mem_bytes),
+                           f"{self.run_threads} threads · " + ("locked ✔" if self.locked else "not locked ▲"), None)
         set_tone(self.st_memory.sub, "good" if self.locked else "warn")
         self.log.add("ok" if self.locked else "warn",
                      f"Memory ready in {float(ev.get('seconds', 0)):.1f} s: {fmt_bytes(self.mem_bytes)} "
                      f"{'locked in RAM' if self.locked else 'NOT locked'}, {huge:.0f} % in huge pages.")
+        temps = temps_text(self.temp_cpu, self.dimm_hottest())
+        if temps:
+            self.log.add("info", f"Temperatures at the start: {temps}.")
         self.state = "running"
         self.bar_test.title.set_label("Current test")
 
@@ -742,7 +841,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sequence.title.set_label(f"Test sequence - cycle {cycle}" + (f" of {cycles}" if cycles else ""))
         self.st_cycle.set(f"{cycle} / {cycles}" if cycles else str(cycle),
                           f"step {step + 1} of {steps}")
-        self.st_test.set(f"#{ti}", ev.get("function", ""))
         self.bar_test.set(0, f"test #{ti} · {ev.get('summary', '')}", "fail" if self.total_errors else None)
         cyc = f"cycle {cycle} of {cycles}" if cycles else f"cycle {cycle}"
         detail = f"Step {step + 1} of {steps}  ·  Test #{ti} {ev.get('function')}  ·  {ev.get('summary', '')}"
@@ -784,7 +882,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.log.add("error", f"ERROR in test #{ti} (thread {ev.get('thread')}): expected {ev.get('expected')}, "
                               f"read {ev.get('actual')} - {bits} bit{'s' if bits != 1 else ''} wrong "
                               f"(bit {ev.get('bit_list')}), "
-                              f"{'wrong value stored in RAM' if ev.get('kind') == 'persistent' else 'read error'}.")
+                              f"{'wrong value stored in RAM' if ev.get('kind') == 'persistent' else 'read error'}"
+                              + (f" ({temps})." if (temps := temps_text(ev.get("cpu_temp"), ev.get("dimm_temp")))
+                                 else "."))
         if first_error:
             cyc = f"cycle {self.cycle} of {self.cycles}" if self.cycles else f"cycle {self.cycle}"
             self.banner.set_state("fail", f"Errors found - {cyc}", self.banner.text.get_label(),
@@ -813,8 +913,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sequence.mark_cycle(c, "fail" if errs else "pass")
         total = int(ev.get("total_errors", 0))
         of = f" of {self.cycles}" if self.cycles else ""
+        hot = temps_text(self.run_cpu_max, self.run_dimm_max)
         self.log.add("error" if total else "ok",
-                     f"Cycle {c}{of} finished - {total} error{'s' if total != 1 else ''} so far.")
+                     f"Cycle {c}{of} finished - {total} error{'s' if total != 1 else ''} so far."
+                     + (f" Highest temperatures so far: {hot}." if hot else ""))
 
     def ev_finish(self, ev: dict) -> None:
         self.finish_event = ev
@@ -876,6 +978,10 @@ class MainWindow(Gtk.ApplicationWindow):
             title = "The test could not run"
             text = ev.get("message") or "See the activity log for details."
             summary = "ERROR - " + text
+        hot = temps_text(self.run_cpu_max, self.run_dimm_max)
+        if hot and self.state in ("pass", "fail", "stopped"):
+            text += f" Highest temperatures: {hot}."
+            summary += f" (highest temperatures: {hot})"
         completed = cycles_done > 0 and (not self.cycles or cycles_done >= self.cycles)
         if self.state == "fail":
             self.bar_overall.set(100 if completed else self.bar_overall.bar.get_fraction() * 100,
@@ -888,6 +994,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.banner.set_button("Run again" if self.state != "error" else "Try again", "start")
         self.st_remaining.set("–", "finished")
         self.st_elapsed.set(dur, "total time")
+        self.apply_temps({"cpu_temp": self.temp_cpu, "dimm_temps": self.temp_dimms,
+                          "cpu_sensor": self.sysinfo.get("cpu_sensor"), "dimm_sensor": self.sysinfo.get("dimm_sensor")})
         self.update_errors_card()
         self.log.add({"pass": "ok", "fail": "error", "stopped": "warn"}.get(self.state, "error"), summary)
         if self.log_path:

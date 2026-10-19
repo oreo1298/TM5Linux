@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from gi.repository import GLib, Gtk, Pango
 
-from .util import clock, fmt_duration
+from .util import clock, fmt_duration, temps_text
 
 TONES = ("good", "bad", "warn", "accent")
 
@@ -380,9 +380,11 @@ class ErrorList(Gtk.ScrolledWindow):
         box = vbox(4)
         head = hbox(10)
         head.append(label(f"Error #{e.get('n', self.count)}", "bad", "strong"))
+        temps = temps_text(e.get("cpu_temp"), e.get("dimm_temp"))
         head.append(label(f"Test #{e.get('test')} {e.get('function', '')} · cycle {e.get('cycle')} · "
                           f"step {int(e.get('step', 0)) + 1} · thread {e.get('thread')} · "
-                          f"after {fmt_duration(e.get('elapsed'))}", "caption", wrap=True))
+                          f"after {fmt_duration(e.get('elapsed'))}" + (f" · {temps}" if temps else ""),
+                          "caption", wrap=True))
         box.append(head)
         box.append(label(f"Expected {e.get('expected')}    Read {e.get('actual')}    "
                          f"→ {bits} bit{'s' if bits != 1 else ''} wrong (bit {e.get('bit_list')})",

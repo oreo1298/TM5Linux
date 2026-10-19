@@ -8,6 +8,7 @@
 #include "tm5.h"
 #include "util.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +109,12 @@ static bool locale_is_utf8(void)
 
 bool ui_color(void) { return g_color; }
 bool ui_utf8(void) { return g_utf8; }
+const char *ui_deg(void) { return g_utf8 ? " °C" : " C"; }
+
+static const char *temp_color(double t, double warn, double hot)
+{
+    return t >= hot ? RED : t >= warn ? YEL : WHT;
+}
 
 void ui_init(bool tty, bool color)
 {
@@ -256,6 +263,26 @@ void ui_draw(const ui_state_t *s)
         sb_add(&sb, "  %s%-*s%s%.1f GB/s\033[K\n", DIM, L, "Speed", RST, s->speed / 1e9);
     else
         sb_add(&sb, "  %s%-*s%s-\033[K\n", DIM, L, "Speed", RST);
+    if (!isnan(s->cpu_temp) || s->ndimm > 0) {
+        sb_add(&sb, "  %s%-*s%s", DIM, L, "Temperature", RST);
+        if (!isnan(s->cpu_temp))
+            sb_add(&sb, "CPU %s%s%.0f%s%s %s(max %.0f)%s", BOLD, temp_color(s->cpu_temp, 85, 95), s->cpu_temp, ui_deg(),
+                   RST, DIM, s->cpu_max, RST);
+        else
+            sb_add(&sb, "CPU %s-%s", DIM, RST);
+        if (s->ndimm > 0) {
+            sb_add(&sb, "  ·  RAM ");
+            for (int i = 0; i < s->ndimm; i++) {
+                if (isnan(s->dimm_temp[i]))
+                    sb_add(&sb, "%s-%s", DIM, RST);
+                else
+                    sb_add(&sb, "%s%s%.0f%s", BOLD, temp_color(s->dimm_temp[i], 50, 60), s->dimm_temp[i], RST);
+                sb_add(&sb, "%s", i + 1 < s->ndimm ? " / " : "");
+            }
+            sb_add(&sb, "%s %s(max %.0f)%s", ui_deg(), DIM, s->dimm_max, RST);
+        }
+        sb_add(&sb, "\033[K\n");
+    }
     if (s->errors)
         sb_add(&sb, "  %s%-*s%s%s%s%llu  - your memory is NOT stable%s\033[K\n", DIM, L, "Errors", RST, BOLD, RED,
                (unsigned long long)s->errors, RST);

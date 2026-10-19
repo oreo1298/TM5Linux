@@ -59,7 +59,12 @@ List available configs.
 Explain every test of the selected config.
 .TP
 .BR \-i ", " \-\-sysinfo
-Show CPU, memory and memory-locking status.
+Show CPU, memory, memory-locking and temperature status.
+.TP
+.B \-\-sensors
+Show the CPU and RAM (DIMM) temperatures and which kernel sensors are used. CPU temperatures come
+from k10temp/zenpower (AMD), coretemp (Intel) or cpu_thermal (ARM); RAM temperatures from spd5118
+(DDR5) or jc42 (DDR4) when the modules have a sensor.
 .TP
 .B \-\-selftest
 Verify that simulated bit flips are detected.
@@ -73,6 +78,10 @@ Only print the final result.
 Locking keeps the tested memory in RAM so it cannot be swapped out. It needs root or the
 CAP_IPC_LOCK capability, which the installer grants with
 .B setcap cap_ipc_lock=ep /usr/bin/tm5linux-cli
+.SH ENVIRONMENT
+.TP
+.B TM5LINUX_SYSFS
+Read sensors from this directory instead of /sys (used by the test suite).
 .SH EXIT STATUS
 0 passed, 1 memory errors found, 2 stopped, 3 could not run.
 .SH FILES

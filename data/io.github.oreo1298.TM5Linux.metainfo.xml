@@ -19,6 +19,7 @@
       <li>Locks the tested memory in RAM and bypasses CPU caches so the DRAM itself is tested</li>
       <li>Plain-language explanations of every test and every error</li>
       <li>Live progress, time remaining, speed and a TM5-style test sequence view</li>
+      <li>CPU temperature, and RAM temperature on modules with a sensor</li>
       <li>Also usable from the terminal with tm5linux-cli</li>
     </ul>
   </description>

@@ -26,11 +26,11 @@ def fmt_duration(seconds: float | None) -> str:
 
 
 def fmt_eta(seconds: float | None) -> str:
-    """Rounded, friendly remaining time: '~ 38 min', '~ 1 h 05 min', 'under a minute'."""
+    """Rounded, friendly remaining time: '~ 38 min', '~ 1 h 05 min', '< 1 min'."""
     if seconds is None or seconds < 0:
         return "estimating…"
     if seconds < 60:
-        return "under a minute"
+        return "< 1 min"
     minutes = int(seconds / 60 + 0.5)
     if minutes < 60:
         return f"~ {minutes} min"
@@ -41,6 +41,26 @@ def fmt_speed(bps: float | None) -> str:
     if not bps or bps <= 0:
         return "–"
     return f"{bps / 1e9:.1f} GB/s"
+
+
+def fmt_temp(t: float | None) -> str:
+    return "–" if t is None else f"{t:.0f} °C"
+
+
+def temps_text(cpu: float | None, ram: float | None) -> str:
+    """'CPU 61 °C, RAM 47 °C' - only the parts that are known."""
+    parts = []
+    if cpu is not None:
+        parts.append(f"CPU {fmt_temp(cpu)}")
+    if ram is not None:
+        parts.append(f"RAM {fmt_temp(ram)}")
+    return ", ".join(parts)
+
+
+def temp_tone(t: float | None, warn: float, hot: float) -> str | None:
+    if t is None:
+        return None
+    return "bad" if t >= hot else "warn" if t >= warn else None
 
 
 def clock() -> str:

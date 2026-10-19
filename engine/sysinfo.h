@@ -4,6 +4,8 @@
 #ifndef TM5L_SYSINFO_H
 #define TM5L_SYSINFO_H
 
+#include "sensors.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -23,6 +25,7 @@ typedef struct {
     bool     is_root;
     bool     can_lock;         /* best guess whether mlock() of most RAM will work */
     char     lock_reason[160];
+    sensors_t sensors;         /* CPU / DIMM temperature sensors */
 } sysinfo_t;
 
 void     sysinfo_read(sysinfo_t *si);

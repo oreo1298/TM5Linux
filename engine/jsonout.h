@@ -22,5 +22,6 @@ void jo_null(FILE *f, const char *k);
 void jo_config(FILE *f, const tm5_config_t *cfg, int time_scale, unsigned refresh_idle_ms, int cycles);
 void jo_sysinfo(FILE *f, const sysinfo_t *si, const tm5_config_t *cfg);
 void jo_presets(FILE *f, const preset_t *p, int n);
+void jo_temps(FILE *f, const sensors_t *s, double cpu, const double *dimms, int ndimm);
 
 #endif

@@ -9,6 +9,7 @@
 #include "util.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <errno.h>
 #include <getopt.h>
 #include <pthread.h>
@@ -73,6 +74,7 @@ static void usage(FILE *f)
         "  -l, --list-presets       list the available configs\n"
         "  -d, --describe           explain what every test of the config does\n"
         "  -i, --sysinfo            show CPU, memory and memory-lock status\n"
+        "      --sensors            show CPU and RAM temperatures\n"
         "      --selftest           check that the engine detects simulated bit flips\n"
         "      --inject-faults[=N]  simulate a bit flip in 1 of every N written blocks (testing only)\n"
         "      --json               machine-readable output (used by the GUI)\n"
@@ -154,6 +156,61 @@ static int print_describe(const tm5_config_t *cfg, const options_t *opt)
     return 0;
 }
 
+static const char *deg(void)
+{
+    const char *vars[] = { "LC_ALL", "LC_CTYPE", "LANG" };
+    for (int i = 0; i < 3; i++) {
+        const char *v = getenv(vars[i]);
+        if (v && *v)
+            return (strstr(v, "UTF-8") || strstr(v, "utf8") || strstr(v, "UTF8") || strstr(v, "utf-8")) ? " °C" : " C";
+    }
+    return " C";
+}
+
+static void print_temp_lines(const sensors_t *s)
+{
+    double cpu = sensors_cpu(s);
+    if (!isnan(cpu))
+        printf("CPU temperature   %.1f%s (%s)\n", cpu, deg(), s->cpu_name);
+    else
+        printf("CPU temperature   not available - no CPU sensor found (load the k10temp or coretemp module)\n");
+    double d[MAX_DIMM_SENSORS];
+    int nd = sensors_dimms(s, d, MAX_DIMM_SENSORS);
+    if (nd > 0) {
+        printf("RAM temperature   ");
+        for (int i = 0; i < nd; i++) {
+            if (isnan(d[i]))
+                printf("%s-", i ? ", " : "");
+            else
+                printf("%s%.1f%s", i ? ", " : "", d[i], deg());
+        }
+        printf(" (%s, %d module%s)\n", s->dimm_driver, nd, nd == 1 ? "" : "s");
+    } else {
+        printf("RAM temperature   not available - DDR5 modules report it with the spd5118 driver (Linux 6.11+);\n"
+               "                  most DDR4 modules have no sensor\n");
+    }
+}
+
+static int print_sensors(const sysinfo_t *si, bool json)
+{
+    const sensors_t *s = &si->sensors;
+    if (json) {
+        double d[MAX_DIMM_SENSORS];
+        int nd = sensors_dimms(s, d, MAX_DIMM_SENSORS);
+        jo_begin(stdout, "temps");
+        jo_temps(stdout, s, sensors_cpu(s), d, nd);
+        jo_end(stdout);
+        return 0;
+    }
+    print_temp_lines(s);
+    if (s->ncpu)
+        for (int i = 0; i < s->ncpu; i++)
+            printf("  CPU sensor file: %s\n", s->cpu_paths[i]);
+    for (int i = 0; i < s->ndimm; i++)
+        printf("  RAM module %d:    %s\n", i + 1, s->dimm_paths[i]);
+    return 0;
+}
+
 static int print_sysinfo(const sysinfo_t *si, const tm5_config_t *cfg, bool json)
 {
     if (json) {
@@ -173,6 +230,7 @@ static int print_sysinfo(const sysinfo_t *si, const tm5_config_t *cfg, bool json
     printf("Default test size %s\n", d);
     printf("Huge pages (THP)  %s\n", si->thp);
     printf("Memory locking    %s (%s)\n", si->can_lock ? "available" : "NOT available", si->lock_reason);
+    print_temp_lines(&si->sensors);
     if (!si->can_lock)
         printf("\nTo allow locking without root, run:\n  sudo setcap cap_ipc_lock=ep \"$(command -v tm5linux-cli)\"\n");
     return 0;
@@ -275,9 +333,10 @@ int main(int argc, char **argv)
     options_t opt = { 0 };
     opt.cycles = -1;
     opt.time_scale = 100;
-    bool list = false, describe = false, sysinfo = false, run_selftest = false, stdin_ctl = false;
+    bool list = false, describe = false, sysinfo = false, run_selftest = false, stdin_ctl = false, sensors = false;
 
-    enum { O_NOLOCK = 256, O_NOHUGE, O_FORCE, O_SEED, O_LOG, O_NOLOG, O_SELFTEST, O_JSON, O_STDIN, O_INJECT, O_IDLE };
+    enum { O_NOLOCK = 256, O_NOHUGE, O_FORCE, O_SEED, O_LOG, O_NOLOG, O_SELFTEST, O_JSON, O_STDIN, O_INJECT, O_IDLE,
+           O_SENSORS };
     static const struct option longopts[] = {
         { "config", required_argument, 0, 'c' },     { "memory", required_argument, 0, 'm' },
         { "threads", required_argument, 0, 't' },    { "cycles", required_argument, 0, 'n' },
@@ -287,6 +346,7 @@ int main(int argc, char **argv)
         { "log", required_argument, 0, O_LOG },      { "no-log", no_argument, 0, O_NOLOG },
         { "list-presets", no_argument, 0, 'l' },     { "describe", no_argument, 0, 'd' },
         { "sysinfo", no_argument, 0, 'i' },          { "selftest", no_argument, 0, O_SELFTEST },
+        { "sensors", no_argument, 0, O_SENSORS },
         { "json", no_argument, 0, O_JSON },          { "stdin-control", no_argument, 0, O_STDIN },
         { "inject-faults", optional_argument, 0, O_INJECT }, { "refresh-idle-ms", required_argument, 0, O_IDLE },
         { "quiet", no_argument, 0, 'q' },            { "version", no_argument, 0, 'V' },
@@ -323,6 +383,7 @@ int main(int argc, char **argv)
         case 'd': describe = true; break;
         case 'i': sysinfo = true; break;
         case O_SELFTEST: run_selftest = true; break;
+        case O_SENSORS: sensors = true; break;
         case O_JSON: opt.json = true; break;
         case O_STDIN: stdin_ctl = true; break;
         case O_INJECT:
@@ -346,6 +407,8 @@ int main(int argc, char **argv)
 
     sysinfo_t si;
     sysinfo_read(&si);
+    if (sensors)
+        return print_sensors(&si, opt.json);
     if (run_selftest)
         return selftest(&si);
 

@@ -62,6 +62,7 @@ build/tm5linux: gui/tm5linux.in build/.paths
 
 check: $(BIN)
 	./$(BIN) --selftest
+	tests/sensors-test.sh $(CURDIR)/$(BIN)
 	$(PYTHON) -m py_compile gui/tm5linux/*.py
 	@echo "All checks passed."
 

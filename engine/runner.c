@@ -13,6 +13,8 @@
 #include "util.h"
 
 #include <errno.h>
+#include <limits.h>
+#include <math.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdarg.h>
@@ -65,6 +67,10 @@ static struct {
     double              rate[MAX_TESTS];        /* measured bytes/s per test number */
     double              test_bytes_done;        /* in completed steps */
     double              test_secs_done;
+    const sysinfo_t    *si;
+    double              t_temp;                 /* last temperature sample */
+    double              cpu_max, dimm_max;      /* hottest readings of the run, NAN = none */
+    _Atomic int         cpu_mc, dimm_mc;        /* latest readings in m°C for error reports */
 } R;
 
 void runner_request_stop(void)
@@ -120,6 +126,61 @@ static void human(int lv, const char *fmt, ...)
     logline(lv_tag[lv], text);
 }
 
+/* ---- temperatures ------------------------------------------------------------------------------ */
+
+static bool have_sensors(void)
+{
+    return R.si && (R.si->sensors.ncpu > 0 || R.si->sensors.ndimm > 0);
+}
+
+/* "CPU 61 °C, RAM 47 °C" from two readings (NAN = skip); empty if neither is known. */
+static void fmt_temps(char *buf, size_t len, double cpu, double ram)
+{
+    buf[0] = '\0';
+    size_t n = 0;
+    if (!isnan(cpu))
+        n += (size_t)snprintf(buf + n, len - n, "CPU %.0f%s", cpu, ui_deg());
+    if (!isnan(ram) && n < len)
+        snprintf(buf + n, len - n, "%sRAM %.0f%s", n ? ", " : "", ram, ui_deg());
+}
+
+/* Read the sensors (at most once a second unless forced), track the maximums and report them. */
+static void sample_temps(double now, bool force)
+{
+    if (!have_sensors() || (!force && now - R.t_temp < 1.0))
+        return;
+    R.t_temp = now;
+    const sensors_t *ss = &R.si->sensors;
+    double cpu = sensors_cpu(ss);
+    double d[MAX_DIMM_SENSORS], dmax = NAN;
+    int nd = sensors_dimms(ss, d, MAX_DIMM_SENSORS);
+    for (int i = 0; i < nd; i++)
+        if (!isnan(d[i]) && (isnan(dmax) || d[i] > dmax))
+            dmax = d[i];
+    if (!isnan(cpu) && (isnan(R.cpu_max) || cpu > R.cpu_max))
+        R.cpu_max = cpu;
+    if (!isnan(dmax) && (isnan(R.dimm_max) || dmax > R.dimm_max))
+        R.dimm_max = dmax;
+    atomic_store(&R.cpu_mc, isnan(cpu) ? INT_MIN : (int)lround(cpu * 1000));
+    atomic_store(&R.dimm_mc, isnan(dmax) ? INT_MIN : (int)lround(dmax * 1000));
+
+    pthread_mutex_lock(&R.out);
+    R.ui.cpu_temp = cpu;
+    R.ui.cpu_max = R.cpu_max;
+    R.ui.ndimm = nd < 8 ? nd : 8;
+    for (int i = 0; i < R.ui.ndimm; i++)
+        R.ui.dimm_temp[i] = d[i];
+    R.ui.dimm_max = R.dimm_max;
+    if (R.json) {
+        jo_begin(stdout, "temps");
+        jo_temps(stdout, ss, cpu, d, nd);
+        jo_dbl(stdout, "cpu_temp_max", R.cpu_max);
+        jo_dbl(stdout, "dimm_temp_max", R.dimm_max);
+        jo_end(stdout);
+    }
+    pthread_mutex_unlock(&R.out);
+}
+
 /* ---- error reporting (called from worker threads) -------------------------------------------- */
 
 void report_mismatch(worker_t *w, const step_t *s, uint64_t *addr, uint64_t expected, uint64_t actual)
@@ -163,6 +224,10 @@ void report_mismatch(worker_t *w, const step_t *s, uint64_t *addr, uint64_t expe
     uint64_t offset = (uint64_t)((uint8_t *)addr - R.w[0].base);
     uint64_t paddr = mem_virt_to_phys(addr);
     double el = now_sec() - R.t0;
+    int cmc = atomic_load(&R.cpu_mc), dmc = atomic_load(&R.dimm_mc);
+    double tcpu = cmc == INT_MIN ? NAN : cmc / 1000.0, tram = dmc == INT_MIN ? NAN : dmc / 1000.0;
+    char temps[64];
+    fmt_temps(temps, sizeof temps, tcpu, tram);
 
     pthread_mutex_lock(&R.out);
     if (R.json) {
@@ -187,6 +252,8 @@ void report_mismatch(worker_t *w, const step_t *s, uint64_t *addr, uint64_t expe
         jo_str(stdout, "bit_list", bitlist);
         jo_str(stdout, "kind", persistent ? "persistent" : "transient");
         jo_dbl(stdout, "elapsed", el);
+        jo_dbl(stdout, "cpu_temp", tcpu);
+        jo_dbl(stdout, "dimm_temp", tram);
         jo_end(stdout);
     }
     char text[512], where[64] = "";
@@ -194,10 +261,11 @@ void report_mismatch(worker_t *w, const step_t *s, uint64_t *addr, uint64_t expe
         snprintf(where, sizeof where, " (physical 0x%llx)", (unsigned long long)paddr);
     snprintf(text, sizeof text,
              "ERROR #%llu in test #%d (%s), thread %d: offset 0x%llx%s - expected 0x%016llx, read 0x%016llx - "
-             "%d bit%s wrong (bit %s) - %s",
+             "%d bit%s wrong (bit %s) - %s%s%s%s",
              (unsigned long long)n, s->index, func_name(s->t->func), w->id, (unsigned long long)offset, where,
              (unsigned long long)expected, (unsigned long long)actual, bits, bits == 1 ? "" : "s", bitlist,
-             persistent ? "data in RAM is wrong" : "read error, re-read was correct");
+             persistent ? "data in RAM is wrong" : "read error, re-read was correct", temps[0] ? " (" : "", temps,
+             temps[0] ? ")" : "");
     if (!R.json && !R.opt->quiet && (n <= TTY_ERROR_EVENTS || !R.tty))
         ui_event(LV_ERR, text);
     logline("ERROR", text);
@@ -458,7 +526,10 @@ static void open_log(const tm5_config_t *cfg, const sysinfo_t *si)
     fprintf(R.logf, "Config : %s by %s (%s)\n", cfg->name, cfg->author, cfg->source);
     fprintf(R.logf, "CPU    : %s (%d threads available)\n", si->cpu, si->cpus);
     fprintf(R.logf, "Memory : %s total, %s available\n", mt, ma);
-    fprintf(R.logf, "Kernel : %s %s, transparent hugepages: %s\n\n", si->kernel, si->arch, si->thp);
+    fprintf(R.logf, "Kernel : %s %s, transparent hugepages: %s\n", si->kernel, si->arch, si->thp);
+    char temps[64];
+    fmt_temps(temps, sizeof temps, sensors_cpu(&si->sensors), sensors_dimm_max(&si->sensors));
+    fprintf(R.logf, "Temps  : %s\n\n", temps[0] ? temps : "no temperature sensors found");
     fflush(R.logf);
     if (!R.json && !opt->quiet)
         say(LV_INFO, "Log file: %s", path);
@@ -478,6 +549,11 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
     g_inject_rate = opt->inject_rate > 1 ? opt->inject_rate : 1;
     atomic_store(&g_injected, 0);
     memset(R.marks, '.', sizeof R.marks - 1);
+    R.si = si;
+    R.cpu_max = R.dimm_max = NAN;
+    atomic_store(&R.cpu_mc, INT_MIN);
+    atomic_store(&R.dimm_mc, INT_MIN);
+    R.ui.cpu_temp = R.ui.cpu_max = R.ui.dimm_max = NAN;
 
     if (!opt->json) {
         const char *term = getenv("TERM");
@@ -555,9 +631,11 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
 
     R.ui.phase = PH_PREPARE;
     double last_emit = 0;
+    sample_temps(now_sec(), true);
     while (atomic_load(&R.done_count) < R.nthreads) {
         nap(50);
         double now = now_sec();
+        sample_temps(now, false);
         if (now - last_emit >= (R.json ? 0.25 : 0.5)) {
             last_emit = now;
             uint64_t d = 0;
@@ -606,6 +684,13 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
             strerror(lock_err ? lock_err : ENOMEM));
     human(all_locked ? LV_OK : LV_WARN, "Memory ready in %.1f s: %s %s, %.0f %% in huge pages.", prep_secs, memtxt,
           all_locked ? "locked in RAM" : "NOT locked", huge);
+    sample_temps(now_sec(), true);
+    {
+        char temps[64];
+        fmt_temps(temps, sizeof temps, R.ui.cpu_temp, R.dimm_max);
+        if (temps[0])
+            human(LV_INFO, "Temperatures at the start: %s.", temps);
+    }
 
     /* ---- test loop ---- */
     R.ui.phase = PH_TESTING;
@@ -680,6 +765,7 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
             while (atomic_load(&R.done_count) < R.nthreads) {
                 nap(50);
                 double now = now_sec();
+                sample_temps(now, false);
                 if (now - last_emit < (R.json ? 0.25 : 0.5))
                     continue;
                 last_emit = now;
@@ -749,12 +835,14 @@ int runner_run(const tm5_config_t *cfg, const options_t *opt, const sysinfo_t *s
             jo_u64(stdout, "total_errors", atomic_load(&R.errors));
             jo_end(stdout);
         }
+        char of[32] = "", temps[64], hot[96] = "";
         if (cycles)
-            human(atomic_load(&R.errors) ? LV_ERR : LV_OK, "Cycle %d of %d finished - %llu error%s so far.", cycle, cycles,
-                  (unsigned long long)atomic_load(&R.errors), atomic_load(&R.errors) == 1 ? "" : "s");
-        else
-            human(atomic_load(&R.errors) ? LV_ERR : LV_OK, "Cycle %d finished - %llu error%s so far.", cycle,
-                  (unsigned long long)atomic_load(&R.errors), atomic_load(&R.errors) == 1 ? "" : "s");
+            snprintf(of, sizeof of, " of %d", cycles);
+        fmt_temps(temps, sizeof temps, R.cpu_max, R.dimm_max);
+        if (temps[0])
+            snprintf(hot, sizeof hot, " Highest so far: %s.", temps);
+        human(atomic_load(&R.errors) ? LV_ERR : LV_OK, "Cycle %d%s finished - %llu error%s so far.%s", cycle, of,
+              (unsigned long long)atomic_load(&R.errors), atomic_load(&R.errors) == 1 ? "" : "s", hot);
         pthread_mutex_unlock(&R.out);
     }
 
@@ -790,6 +878,8 @@ out_nothreads:
         jo_u64(stdout, "errors", res->errors);
         jo_dbl(stdout, "elapsed", res->elapsed);
         jo_int(stdout, "cycles_done", res->cycles_done);
+        jo_dbl(stdout, "cpu_temp_max", R.cpu_max);
+        jo_dbl(stdout, "dimm_temp_max", R.dimm_max);
         fputs(",\"errors_by_test\":{", stdout);
         bool first = true;
         for (int i = 0; i < MAX_TESTS; i++) {
@@ -835,8 +925,12 @@ out_nothreads:
         snprintf(line1, sizeof line1, "The test could not run");
         snprintf(line2, sizeof line2, "See the messages above for the reason.");
     }
+    char hottest[64];
+    fmt_temps(hottest, sizeof hottest, R.cpu_max, R.dimm_max);
     if (R.logf) {
         fprintf(R.logf, "\nRESULT : %s\n         %s\nMemory : %s on %d threads\n", line1, line2, mem, R.nthreads);
+        if (hottest[0])
+            fprintf(R.logf, "Hottest: %s\n", hottest);
         fclose(R.logf);
         R.logf = NULL;
     }
@@ -849,6 +943,8 @@ out_nothreads:
         if (R.total)
             printf("    %s by %s · %s on %d threads%s\n", cfg->name, cfg->author, mem, R.nthreads,
                    R.ui.locked ? " · memory locked" : "");
+        if (hottest[0])
+            printf("    Highest temperatures: %s\n", hottest);
         printf("\n");
         fflush(stdout);
     }
